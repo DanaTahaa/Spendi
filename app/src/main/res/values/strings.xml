@@ -1,0 +1,82 @@
+<resources>
+    <string name="app_name">Spendi</string>
+    <string name="welcome_title">Welcome to Spendi</string>
+    <string name="welcome_subtitle">Track your spending. Plan your budget.</string>
+    <string name="get_started">Get started</string>
+
+    <string name="dashboard_title">Overview</string>
+    <string name="total_balance">Total balance</string>
+    <string name="income_label">Income</string>
+    <string name="expense_label">Expenses</string>
+    <string name="initial_amount">0.00</string>
+    <string name="recent_transactions">Recent transactions</string>
+    <string name="no_transactions">No transactions yet. Add your first income or expense.</string>
+    <string name="add_transaction">Add transaction</string>
+
+    <string name="new_transaction_title">New transaction</string>
+    <string name="amount_hint">Amount</string>
+    <string name="transaction_type_label">Transaction type</string>
+    <string name="transaction_income">Income</string>
+    <string name="transaction_expense">Expense</string>
+    <string name="note_hint">Note (optional)</string>
+    <string name="save_transaction">Save transaction</string>
+
+    <string name="error_amount_required">Enter an amount</string>
+    <string name="error_amount_invalid">Enter a valid amount, for example 25.50</string>
+    <string name="error_amount_positive">Amount must be greater than zero</string>
+    <string name="error_amount_precision">Use no more than 2 decimal places</string>
+    <string name="amount_validated">Amount is valid. Not saved yet.</string>
+
+    <string name="category_label">Category</string>
+    <string name="error_category_required">Select a category</string>
+
+    <string-array name="expense_categories">
+        <item>Select a category</item>
+        <item>Food</item>
+        <item>Transport</item>
+        <item>Shopping</item>
+        <item>Bills</item>
+        <item>Health</item>
+        <item>Education</item>
+        <item>Other</item>
+    </string-array>
+
+    <string-array name="income_categories">
+        <item>Select a category</item>
+        <item>Salary</item>
+        <item>Freelance</item>
+        <item>Gift</item>
+        <item>Other</item>
+    </string-array>
+
+    <string name="transaction_date_label">Transaction date</string>
+
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="lorem_ipsum">Sample text</string>
+    <string name="action_settings">Settings</string>
+    <string name="first_fragment_label">First screen</string>
+    <string name="second_fragment_label">Second screen</string>
+
+    <string name="filter_type_label">Show transactions</string>
+
+    <string-array name="transaction_filters">
+        <item>All transactions</item>
+        <item>Income only</item>
+        <item>Expenses only</item>
+    </string-array>
+
+    <string name="search_transactions_hint">Search by category or note</string>
+
+    <string name="previous_month">Previous month</string>
+    <string name="next_month">Next month</string>
+    <string name="selected_month_label">Selected month</string>
+
+    <string name="monthly_budget">Monthly budget</string>
+    <string name="budget_not_set">No budget set for this month</string>
+    <string name="set_budget">Set budget</string>
+    <string name="budget_amount_hint">Budget amount (USD)</string>
+    <string name="save_budget">Save</string>
+    <string name="cancel_budget">Cancel</string>
+
+</resources>
