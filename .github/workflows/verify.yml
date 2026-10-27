@@ -44,3 +44,47 @@ jobs:
           name: spendi-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: spendi_test
+          POSTGRES_USER: spendi_test
+          POSTGRES_PASSWORD: ephemeral-ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U spendi_test -d spendi_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SPENDI_TEST_DB_URL: jdbc:postgresql://127.0.0.1:5432/spendi_test
+      SPENDI_TEST_DB_USER: spendi_test
+      SPENDI_TEST_DB_PASSWORD: ephemeral-ci-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify Java 21 backend against PostgreSQL
+        run: bash ./gradlew -PbackendOnly :core:test :backend:test :backend:integrationTest :backend:installDist --no-daemon --max-workers=2 --console=plain
+      - name: Save backend test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-verification-reports
+          path: backend/build/reports/tests/
+          if-no-files-found: error
+      - name: Save runnable backend distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: spendi-backend
+          path: backend/build/install/backend/
+          if-no-files-found: error

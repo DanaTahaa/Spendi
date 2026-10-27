@@ -23,5 +23,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Spendi"
-include(":app")
+if (!providers.gradleProperty("backendOnly").isPresent) include(":app")
 include(":core")
+include(":backend")

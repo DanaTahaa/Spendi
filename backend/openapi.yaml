@@ -1,0 +1,232 @@
+openapi: 3.1.0
+info:
+  title: Spendi API
+  version: 1.0.0
+  description: Authenticated USD expense tracking. Android synchronization is a separate milestone.
+servers:
+  - url: http://127.0.0.1:8080
+security:
+  - bearerAuth: []
+paths:
+  /health/live:
+    get:
+      operationId: liveness
+      security: []
+      responses:
+        '200': {description: Process is serving requests}
+  /health/ready:
+    get:
+      operationId: readiness
+      security: []
+      responses:
+        '200': {description: Database connection is available}
+        '503': {description: Database connection is unavailable}
+  /v1/transactions:
+    get:
+      operationId: listTransactions
+      description: Deterministic offset pagination, ordered by date descending then ID descending. Concurrent writes can shift pages.
+      parameters:
+        - {name: month, in: query, required: true, schema: {$ref: '#/components/schemas/Month'}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, maximum: 10000, default: 0}}
+      responses:
+        '200':
+          description: Transactions owned by the verified subject
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, offset]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Transaction'}}
+                  limit: {type: integer}
+                  offset: {type: integer}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createTransaction
+      description: The key is scoped to the verified subject. Equivalent validated requests replay the original 201 response, including after an edit or delete. Different data with the same key returns 409. Keys have no automatic expiration in this milestone.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, pattern: '^[A-Za-z0-9._:-]{1,128}$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TransactionCreate'}
+      responses:
+        '201':
+          description: Created or original response replayed
+          headers:
+            Location: {schema: {type: string}, description: Transaction resource path}
+            Idempotency-Replayed: {schema: {type: boolean}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Transaction'}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/transactions/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: getTransaction
+      responses:
+        '200':
+          description: Owned transaction
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Transaction'}
+        '404': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      operationId: updateTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TransactionUpdate'}
+      responses:
+        '200':
+          description: Updated transaction with incremented version
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Transaction'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: deleteTransaction
+      parameters:
+        - {name: version, in: query, required: true, schema: {$ref: '#/components/schemas/Version'}}
+      responses:
+        '204': {description: Deleted; no response body}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/budgets/{month}:
+    parameters:
+      - {name: month, in: path, required: true, schema: {$ref: '#/components/schemas/Month'}}
+    get:
+      operationId: getBudget
+      responses:
+        '200':
+          description: Owned monthly budget
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Budget'}
+        '404': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      operationId: saveBudget
+      description: Omit version or use 0 to create. Existing budgets require the current positive version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount]
+              properties:
+                amount: {$ref: '#/components/schemas/PositiveAmount'}
+                version: {type: [integer, 'null'], format: int64, minimum: 0, maximum: 9223372036854775806}
+      responses:
+        '201':
+          description: Budget created
+          content: {application/json: {schema: {$ref: '#/components/schemas/Budget'}}}
+        '200':
+          description: Budget updated
+          content: {application/json: {schema: {$ref: '#/components/schemas/Budget'}}}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /v1/summaries/{month}:
+    parameters:
+      - {name: month, in: path, required: true, schema: {$ref: '#/components/schemas/Month'}}
+    get:
+      operationId: monthlySummary
+      description: Totals and budget from one repeatable-read PostgreSQL snapshot. No budget produces null budget and remaining fields.
+      responses:
+        '200':
+          description: Monthly financial totals
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [month, currency, income, expenses, balance, budget, remaining]
+                properties:
+                  month: {$ref: '#/components/schemas/Month'}
+                  currency: {const: USD, type: string}
+                  income: {type: string, examples: ['100.00']}
+                  expenses: {type: string, examples: ['25.50']}
+                  balance: {type: string, examples: ['74.50']}
+                  budget: {type: [string, 'null'], examples: ['50.00', null]}
+                  remaining: {type: [string, 'null'], examples: ['24.50', null]}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  responses:
+    Error:
+      description: '400 invalid input; 401 invalid authentication; 404 missing or inaccessible resource; 405 unsupported method; 409 stale version/key conflict; 413 body over 16 KiB; 415 wrong content type; 500 internal error; 503 busy/unavailable. No ownership information is disclosed in 404 responses.'
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message, requestId]
+            properties:
+              code: {type: string}
+              message: {type: string}
+              requestId: {type: string, format: uuid}
+  schemas:
+    Month:
+      type: string
+      pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      description: Calendar month with year between 1900 and 9999
+      examples: ['2027-07']
+    PositiveAmount:
+      type: string
+      description: Positive USD amount with at most two decimal places and at most 92233720368547758.07. English, Arabic-Indic and Persian digits are accepted; dot, comma or Arabic decimal separator is supported. Grouping/exponents are unsupported. Surrounding whitespace is trimmed.
+      examples: ['25.50']
+    Version:
+      type: integer
+      format: int64
+      minimum: 1
+      maximum: 9223372036854775806
+    TransactionCreate:
+      type: object
+      additionalProperties: false
+      required: [amount, type, category, date]
+      properties: &editableFields
+        amount: {$ref: '#/components/schemas/PositiveAmount'}
+        type: {type: string, enum: [INCOME, EXPENSE]}
+        category: {type: string, minLength: 1, maxLength: 60, description: Must contain non-whitespace text; trimmed before storage}
+        date: {type: string, format: date, description: ISO date between 1900-01-01 and 9999-12-31}
+        note: {type: [string, 'null'], maxLength: 1000, description: Trimmed; null or missing becomes an empty string}
+    TransactionUpdate:
+      type: object
+      additionalProperties: false
+      required: [amount, type, category, date, version]
+      properties:
+        <<: *editableFields
+        version: {$ref: '#/components/schemas/Version'}
+    Transaction:
+      type: object
+      required: [id, amount, currency, type, category, date, note, version]
+      properties:
+        id: {type: string, format: uuid}
+        amount: {type: string, examples: ['25.50']}
+        currency: {type: string, const: USD}
+        type: {type: string, enum: [INCOME, EXPENSE]}
+        category: {type: string}
+        date: {type: string, format: date}
+        note: {type: string}
+        version: {type: integer, format: int64, minimum: 1}
+    Budget:
+      type: object
+      required: [month, amount, currency, version]
+      properties:
+        month: {$ref: '#/components/schemas/Month'}
+        amount: {type: string, examples: ['100.00']}
+        currency: {type: string, const: USD}
+        version: {type: integer, format: int64, minimum: 1}
