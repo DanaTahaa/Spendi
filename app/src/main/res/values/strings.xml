@@ -25,6 +25,7 @@
     <string name="error_amount_invalid">Enter a valid amount, for example 25.50</string>
     <string name="error_amount_positive">Amount must be greater than zero</string>
     <string name="error_amount_precision">Use no more than 2 decimal places</string>
+    <string name="error_amount_too_large">Amount is too large</string>
     <string name="amount_validated">Amount is valid. Not saved yet.</string>
 
     <string name="category_label">Category</string>

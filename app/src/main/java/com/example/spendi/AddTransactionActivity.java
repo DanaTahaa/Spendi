@@ -26,6 +26,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.Locale;
 
+import com.example.spendi.core.AmountParser;
+
 public class AddTransactionActivity extends AppCompatActivity {
 
     private TextInputLayout amountLayout;
@@ -234,58 +236,18 @@ public class AddTransactionActivity extends AppCompatActivity {
                 ? ""
                 : amountInput.getText().toString().trim();
 
-        if (text.isEmpty()) {
-            amountLayout.setError(
-                    getString(R.string.error_amount_required)
-            );
-            return;
-        }
-
-        StringBuilder normalized = new StringBuilder();
-
-        for (char character : text.toCharArray()) {
-            int digit = Character.digit(character, 10);
-
-            if (digit >= 0) {
-                normalized.append(digit);
-            } else if (character == '\u066B' || character == ',') {
-                normalized.append('.');
-            } else {
-                normalized.append(character);
-            }
-        }
-
-        String value = normalized.toString();
-
-        if (!value.matches("[0-9]+(\\.[0-9]+)?")) {
-            amountLayout.setError(
-                    getString(R.string.error_amount_invalid)
-            );
-            return;
-        }
-
-        BigDecimal amount = new BigDecimal(value);
-
-        if (amount.signum() <= 0) {
-            amountLayout.setError(
-                    getString(R.string.error_amount_positive)
-            );
-            return;
-        }
-
-        if (amount.scale() > 2) {
-            amountLayout.setError(
-                    getString(R.string.error_amount_precision)
-            );
-            return;
-        }
-
         long amountMinor;
-
         try {
-            amountMinor = amount.movePointRight(2).longValueExact();
-        } catch (ArithmeticException exception) {
-            amountLayout.setError("Amount is too large");
+            amountMinor = AmountParser.parsePositiveMinor(text);
+        } catch (AmountParser.InvalidAmountException exception) {
+            int message = switch (exception.error()) {
+                case REQUIRED -> R.string.error_amount_required;
+                case INVALID -> R.string.error_amount_invalid;
+                case NOT_POSITIVE -> R.string.error_amount_positive;
+                case PRECISION -> R.string.error_amount_precision;
+                case TOO_LARGE -> R.string.error_amount_too_large;
+            };
+            amountLayout.setError(getString(message));
             return;
         }
 

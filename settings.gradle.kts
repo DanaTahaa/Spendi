@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Spendi"
 include(":app")
+include(":core")

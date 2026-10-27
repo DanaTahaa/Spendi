@@ -27,10 +27,13 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+
+import com.example.spendi.core.AmountParser;
+import com.example.spendi.core.MonthlyTotals;
 
 public class DashboardActivity extends AppCompatActivity {
 
@@ -266,42 +269,26 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private boolean belongsToSelectedMonth(Transaction transaction) {
-        if (transaction.date == null) {
-            return false;
-        }
+        return MonthlyTotals.belongsToMonth(transaction.date, selectedMonth);
+    }
 
-        try {
-            LocalDate date = LocalDate.parse(transaction.date);
-            return YearMonth.from(date).equals(selectedMonth);
-        } catch (DateTimeParseException exception) {
-            return false;
+    private MonthlyTotals monthlyTotals() {
+        MonthlyTotals totals = new MonthlyTotals(selectedMonth);
+        for (Transaction transaction : allTransactions) {
+            if (transaction.amountMinor > 0
+                    && ("INCOME".equals(transaction.type)
+                    || "EXPENSE".equals(transaction.type))) {
+                totals.add(transaction.amountMinor, transaction.type, transaction.date);
+            }
         }
+        return totals;
     }
 
     private void updateTotals() {
-        BigDecimal income = BigDecimal.ZERO;
-        BigDecimal expenses = BigDecimal.ZERO;
-
-        for (Transaction transaction : allTransactions) {
-            if (!belongsToSelectedMonth(transaction)) {
-                continue;
-            }
-
-            BigDecimal amount = BigDecimal.valueOf(
-                    transaction.amountMinor,
-                    2
-            );
-
-            if ("INCOME".equals(transaction.type)) {
-                income = income.add(amount);
-            } else if ("EXPENSE".equals(transaction.type)) {
-                expenses = expenses.add(amount);
-            }
-        }
-
-        incomeView.setText(formatMoney(income));
-        expensesView.setText(formatMoney(expenses));
-        balanceView.setText(formatMoney(income.subtract(expenses)));
+        MonthlyTotals totals = monthlyTotals();
+        incomeView.setText(formatMoney(totals.income()));
+        expensesView.setText(formatMoney(totals.expenses()));
+        balanceView.setText(formatMoney(totals.balance()));
     }
 
     private void displayFilteredTransactions() {
@@ -347,11 +334,10 @@ public class DashboardActivity extends AppCompatActivity {
         }
 
         if (displayedTransactions.isEmpty()) {
-            transactionsView.setText(
-                    monthHasTransactions
-                            ? "No transactions match your search or filter."
-                            : "No transactions for this month."
-            );
+            String message = monthHasTransactions
+                    ? "No transactions match your search or filter."
+                    : "No transactions for this month.";
+            transactionsView.setText(message + getCategorySummary());
             return;
         }
 
@@ -378,7 +364,7 @@ public class DashboardActivity extends AppCompatActivity {
 
         recent.append("\n\nTap here to edit or delete a transaction.");
 
-        transactionsView.setText(recent.toString());
+        transactionsView.setText(recent.toString() + getCategorySummary());
     }
 
     private String transactionDescription(Transaction transaction) {
@@ -568,18 +554,7 @@ public class DashboardActivity extends AppCompatActivity {
         BigDecimal budgetAmount =
                 BigDecimal.valueOf(currentBudget.amountMinor, 2);
 
-        BigDecimal expenses = BigDecimal.ZERO;
-
-        for (Transaction transaction : allTransactions) {
-            if (belongsToSelectedMonth(transaction)
-                    && "EXPENSE".equals(transaction.type)) {
-                expenses = expenses.add(
-                        BigDecimal.valueOf(transaction.amountMinor, 2)
-                );
-            }
-        }
-
-        BigDecimal remaining = budgetAmount.subtract(expenses);
+        BigDecimal remaining = monthlyTotals().remainingBudget(currentBudget.amountMinor);
 
         budgetAmountView.setText(formatMoney(budgetAmount));
 
@@ -644,43 +619,18 @@ public class DashboardActivity extends AppCompatActivity {
 
             saveButton.setOnClickListener(view -> {
                 String text = input.getText().toString().trim();
-                StringBuilder normalized = new StringBuilder();
-
-                for (char character : text.toCharArray()) {
-                    int digit = Character.digit(character, 10);
-
-                    if (digit >= 0) {
-                        normalized.append(digit);
-                    } else if (character == '\u066B'
-                            || character == ',') {
-                        normalized.append('.');
-                    } else {
-                        normalized.append(character);
-                    }
-                }
-
-                String value = normalized.toString();
-
-                if (!value.matches("[0-9]+(\\.[0-9]{1,2})?")) {
-                    input.setError(
-                            "Enter an amount such as 200 or 200.50"
-                    );
-                    return;
-                }
-
                 long amountMinor;
-
                 try {
-                    amountMinor = new BigDecimal(value)
-                            .movePointRight(2)
-                            .longValueExact();
-                } catch (ArithmeticException exception) {
-                    input.setError("Amount is too large");
-                    return;
-                }
-
-                if (amountMinor <= 0) {
-                    input.setError("Budget must be greater than zero");
+                    amountMinor = AmountParser.parsePositiveMinor(text);
+                } catch (AmountParser.InvalidAmountException exception) {
+                    int message = switch (exception.error()) {
+                        case REQUIRED -> R.string.error_amount_required;
+                        case INVALID -> R.string.error_amount_invalid;
+                        case NOT_POSITIVE -> R.string.error_amount_positive;
+                        case PRECISION -> R.string.error_amount_precision;
+                        case TOO_LARGE -> R.string.error_amount_too_large;
+                    };
+                    input.setError(getString(message));
                     return;
                 }
 
@@ -748,4 +698,40 @@ public class DashboardActivity extends AppCompatActivity {
     private String formatMoney(BigDecimal amount) {
         return amount.setScale(2).toPlainString() + " USD";
     }
+
+    private String getCategorySummary() {
+
+        List<Transaction> monthlyTransactions = new ArrayList<>();
+
+        for (Transaction transaction : allTransactions) {
+            if (belongsToSelectedMonth(transaction)) {
+                monthlyTransactions.add(transaction);
+            }
+        }
+
+        Map<String, Long> totals =
+                ExpenseAnalyzer.calculateByCategory(monthlyTransactions);
+
+        if (totals.isEmpty()) {
+            return "\n\nNo expenses by category.";
+        }
+
+        StringBuilder summary =
+                new StringBuilder("\n\nExpenses by Category:");
+
+        for (Map.Entry<String, Long> entry : totals.entrySet()) {
+
+            summary.append("\n")
+                    .append(entry.getKey())
+                    .append(": ")
+                    .append(formatMoney(
+                            BigDecimal.valueOf(
+                                    entry.getValue(), 2
+                            )
+                    ));
+        }
+
+        return summary.toString();
+    }
+
 }
