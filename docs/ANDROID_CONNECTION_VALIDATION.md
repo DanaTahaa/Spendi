@@ -36,3 +36,5 @@ The CLI integration script passed on the existing Pixel_8_Pro emulator (Android 
 The first attempt completed its test assertions but the instrumentation process crashed while the cold-booted emulator was reporting system-wide application-not-responding errors. After boot stabilized, a fresh run completed successfully. The CLI scripts now wait for both boot completion and the package service before installing APKs.
 
 The generated release manifest was inspected: cleartext traffic is disabled, and the debug receiver and debug network-security configuration are absent. All five PowerShell scripts parsed successfully. The Git diff passed whitespace checks; generated files, the persistent development database, and private connection credentials are excluded from the staged change.
+
+The CLI connection script was executed successfully: it opened the debug application and received result 1 from the protected configuration receiver. The script starts the app before sending a foreground-priority broadcast, avoiding the emulator's delayed background cold-start queue. The API remained ready after setup, with PostgreSQL data preserved.
