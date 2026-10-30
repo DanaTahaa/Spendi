@@ -26,3 +26,4 @@ rootProject.name = "Spendi"
 if (!providers.gradleProperty("backendOnly").isPresent) include(":app")
 include(":core")
 include(":backend")
+include(":api-client")

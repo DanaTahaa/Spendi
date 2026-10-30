@@ -12,6 +12,11 @@ application { mainClass = "com.example.spendi.backend.Main" }
 val jooqVersion = "3.21.9"
 val flywayVersion = "13.11.1"
 val jooqCodegen = configurations.create("jooqCodegen")
+val localServerSource = sourceSets.create("local")
+localServerSource.compileClasspath += sourceSets.main.get().output
+localServerSource.runtimeClasspath += sourceSets.main.get().output
+configurations[localServerSource.implementationConfigurationName].extendsFrom(configurations.implementation.get())
+configurations[localServerSource.runtimeOnlyConfigurationName].extendsFrom(configurations.runtimeOnly.get())
 dependencies {
     implementation(project(":core"))
     implementation("org.jooq:jooq:$jooqVersion")
@@ -25,6 +30,8 @@ dependencies {
     jooqCodegen("org.jooq:jooq-codegen:$jooqVersion")
     jooqCodegen("org.jooq:jooq-meta-extensions:$jooqVersion")
     testImplementation("org.spockframework:spock-core:2.4-groovy-4.0")
+    testImplementation(project(":api-client"))
+    testRuntimeOnly("org.json:json:20260814")
     testImplementation("io.zonky.test:embedded-postgres:2.1.1") {
         exclude(group = "io.zonky.test.postgres")
     }
@@ -35,7 +42,24 @@ dependencies {
         else -> "linux-amd64"
     }
     testRuntimeOnly("io.zonky.test.postgres:embedded-postgres-binaries-$postgresPlatform:17.10.0")
+    add(localServerSource.implementationConfigurationName,"io.zonky.test:embedded-postgres:2.1.1") {
+        exclude(group="io.zonky.test.postgres")
+    }
+    add(localServerSource.runtimeOnlyConfigurationName,"io.zonky.test.postgres:embedded-postgres-binaries-$postgresPlatform:17.10.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+val localServerJar = tasks.register<Jar>("localServerJar") {
+    archiveBaseName = "spendi-local-server"
+    from(localServerSource.output)
+}
+tasks.register<Sync>("prepareLocalServer") {
+    group = "application"
+    description = "Prepare a standalone development server launcher; no long-running Gradle build is required"
+    into(layout.buildDirectory.dir("local-server/lib"))
+    from(configurations[localServerSource.runtimeClasspathConfigurationName])
+    from(tasks.jar)
+    from(localServerJar)
 }
 
 val generateJooq = tasks.register<JavaExec>("generateJooq") {

@@ -36,3 +36,7 @@ The hosted result belongs to the actual GitHub commit/run, visible in Actions. T
 ## Limits
 
 A real external OIDC account/provider was not provisioned. Tests verify freshly generated RSA-signed access tokens and the same JWT verification path. Docker Compose was supplied for development PostgreSQL but was not run locally because Docker is not installed. There was no cloud deployment, performance benchmark, or Android-to-API synchronization test. Android synchronization is the next milestone, not part of this backend claim.
+
+## Android connection follow-up
+
+The local-only descriptions above record the backend milestone on 2026-10-27. The subsequent Android online connection and CLI persistent database work is documented in [Android connection verification](ANDROID_CONNECTION_VALIDATION.md) and [the setup guide](ANDROID_BACKEND_CONNECTION.md).

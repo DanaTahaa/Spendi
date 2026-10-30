@@ -40,6 +40,10 @@ public class AddTransactionActivity extends AppCompatActivity {
 
     private LocalDate selectedDate = LocalDate.now();
     private long transactionId = -1;
+    private String remoteId;
+    private long remoteVersion;
+    private String createKey;
+    private DataRepository repository;
     private boolean busy = false;
 
     @Override
@@ -59,6 +63,12 @@ public class AddTransactionActivity extends AppCompatActivity {
         transactionId = getIntent().getLongExtra(
                 "transaction_id", -1
         );
+        repository=new DataRepository(this);
+        remoteId=getIntent().getStringExtra("remote_transaction_id");
+        if ((transactionId>0 && repository.cloud()) || (remoteId!=null && !repository.cloud())) {
+            Toast.makeText(this,"Data source changed. Reopen the transaction.",Toast.LENGTH_LONG).show(); finish(); return;
+        }
+        createKey=savedInstanceState==null?java.util.UUID.randomUUID().toString():savedInstanceState.getString("create_key",java.util.UUID.randomUUID().toString());
 
         updateCategories();
         updateDateButton();
@@ -84,14 +94,14 @@ public class AddTransactionActivity extends AppCompatActivity {
 
         saveButton.setOnClickListener(view -> saveTransaction());
 
-        if (transactionId > 0) {
+        if (transactionId > 0 || remoteId != null) {
             saveButton.setText("Save changes");
         }
 
         if (savedInstanceState != null
                 && savedInstanceState.getBoolean("draft_ready")) {
             restoreDraft(savedInstanceState);
-        } else if (transactionId > 0) {
+        } else if (transactionId > 0 || remoteId != null) {
             loadTransaction();
         }
 
@@ -168,10 +178,7 @@ public class AddTransactionActivity extends AppCompatActivity {
 
         AppDatabase.databaseExecutor.execute(() -> {
             try {
-                Transaction transaction =
-                        AppDatabase.getInstance(appContext)
-                                .transactionDao()
-                                .getById(requestedId);
+                Transaction transaction = repository.get(requestedId,remoteId);
 
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) {
@@ -193,6 +200,7 @@ public class AddTransactionActivity extends AppCompatActivity {
                                     transaction.amountMinor, 2
                             ).toPlainString()
                     );
+                    remoteVersion=transaction.remoteVersion;
 
                     typeGroup.check(
                             "INCOME".equals(transaction.type)
@@ -274,7 +282,9 @@ public class AddTransactionActivity extends AppCompatActivity {
                 noteInput.getText().toString().trim()
         );
 
-        boolean editing = transactionId > 0;
+        boolean editing = transactionId > 0 || remoteId != null;
+        transaction.remoteId=remoteId;
+        transaction.remoteVersion=remoteVersion;
 
         if (editing) {
             transaction.id = transactionId;
@@ -285,19 +295,7 @@ public class AddTransactionActivity extends AppCompatActivity {
 
         AppDatabase.databaseExecutor.execute(() -> {
             try {
-                TransactionDao dao =
-                        AppDatabase.getInstance(appContext)
-                                .transactionDao();
-
-                if (editing) {
-                    if (dao.update(transaction) != 1) {
-                        throw new IllegalStateException(
-                                "Transaction no longer exists"
-                        );
-                    }
-                } else {
-                    dao.insert(transaction);
-                }
+                repository.save(transaction,editing,createKey);
 
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) {
@@ -326,7 +324,7 @@ public class AddTransactionActivity extends AppCompatActivity {
 
                     Toast.makeText(
                             this,
-                            "Could not save. Please try again.",
+                            DataRepository.message(exception),
                             Toast.LENGTH_LONG
                     ).show();
                 });
@@ -337,10 +335,12 @@ public class AddTransactionActivity extends AppCompatActivity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
+        outState.putString("create_key",createKey);
+        outState.putLong("remote_version",remoteVersion);
 
-        outState.putBoolean("draft_ready", !busy);
+        outState.putBoolean("draft_ready", true);
 
-        if (!busy) {
+        {
             outState.putString(
                     "draft_amount",
                     amountInput.getText() == null
@@ -362,6 +362,7 @@ public class AddTransactionActivity extends AppCompatActivity {
     }
 
     private void restoreDraft(Bundle state) {
+        remoteVersion=state.getLong("remote_version",0);
         amountInput.setText(state.getString("draft_amount", ""));
         noteInput.setText(state.getString("draft_note", ""));
         typeGroup.check(

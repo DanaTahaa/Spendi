@@ -56,6 +56,11 @@ public class DashboardActivity extends AppCompatActivity {
 
     private boolean deleting = false;
     private int budgetRequest = 0;
+    private int transactionRequest = 0;
+    private boolean loadingTransactions;
+    private boolean dataUnavailable;
+    private DataRepository repository;
+    private com.example.spendi.client.ApiClient.Summary cloudSummary;
 
     private AlertDialog budgetDialog;
 
@@ -64,6 +69,9 @@ public class DashboardActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_dashboard);
+        repository=new DataRepository(this);
+        findViewById(R.id.btnCloudConnection).setOnClickListener(view -> startActivity(new Intent(this,CloudConnectionActivity.class)));
+        findViewById(R.id.tvDataSource).setOnClickListener(view -> loadTransactions());
 
         balanceView = findViewById(R.id.tvBalance);
         incomeView = findViewById(R.id.tvIncome);
@@ -95,12 +103,12 @@ public class DashboardActivity extends AppCompatActivity {
 
         findViewById(R.id.btnPreviousMonth).setOnClickListener(view -> {
             selectedMonth = selectedMonth.minusMonths(1);
-            refreshDashboard();
+            loadTransactions();
         });
 
         findViewById(R.id.btnNextMonth).setOnClickListener(view -> {
             selectedMonth = selectedMonth.plusMonths(1);
-            refreshDashboard();
+            loadTransactions();
         });
 
         findViewById(R.id.btnSetBudget).setOnClickListener(
@@ -179,7 +187,7 @@ public class DashboardActivity extends AppCompatActivity {
                 }
         );
 
-        refreshDashboard();
+        findViewById(R.id.btnSetBudget).setEnabled(false);
     }
 
     @Override
@@ -220,33 +228,53 @@ public class DashboardActivity extends AppCompatActivity {
 
     private void loadTransactions() {
         Context appContext = getApplicationContext();
+        repository=new DataRepository(this);
+        DataRepository source=repository;
+        YearMonth month=selectedMonth;
+        int request=++transactionRequest;
+        ++budgetRequest;
+        loadingTransactions=true;
+        dataUnavailable=false;
+        allTransactions.clear(); displayedTransactions.clear(); currentBudget=null; cloudSummary=null;
+        selectedMonthView.setText(month.format(DateTimeFormatter.ofPattern("MMMM yyyy",Locale.getDefault())));
+        ((TextView)findViewById(R.id.tvDataSource)).setText(source.label()+" • tap to refresh");
+        transactionsView.setEnabled(false); transactionsView.setText("Loading transactions…");
+        balanceView.setText("…"); incomeView.setText("…"); expensesView.setText("…");
+        budgetAmountView.setText("…"); budgetStatusView.setText("");
+        findViewById(R.id.btnSetBudget).setEnabled(false);
 
         AppDatabase.databaseExecutor.execute(() -> {
             try {
-                List<Transaction> transactions =
-                        AppDatabase.getInstance(appContext)
-                                .transactionDao()
-                                .getAllTransactions();
+                List<Transaction> transactions = source.list(month);
+                var summary=source.summary(month);
 
                 runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) {
+                    if (isFinishing() || isDestroyed() || request!=transactionRequest || !month.equals(selectedMonth)) {
                         return;
                     }
 
                     allTransactions = new ArrayList<>(transactions);
+                    cloudSummary=summary;
+                    loadingTransactions=false;
+                    transactionsView.setEnabled(true);
                     refreshDashboard();
                 });
             } catch (Exception exception) {
                 Log.e("Spendi", "Could not load transactions", exception);
 
                 runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) {
+                    if (isFinishing() || isDestroyed() || request!=transactionRequest || !month.equals(selectedMonth)) {
                         return;
                     }
 
+                    loadingTransactions=false;
+                    transactionsView.setText(DataRepository.message(exception));
+                    dataUnavailable=true;
+                    balanceView.setText("Unavailable"); incomeView.setText("Unavailable"); expensesView.setText("Unavailable");
+                    budgetAmountView.setText("Unavailable");
                     Toast.makeText(
                             appContext,
-                            "Could not load transactions",
+                            DataRepository.message(exception),
                             Toast.LENGTH_LONG
                     ).show();
                 });
@@ -285,6 +313,11 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void updateTotals() {
+        if(cloudSummary!=null) {
+            incomeView.setText(formatMoney(new BigDecimal(cloudSummary.income)));
+            expensesView.setText(formatMoney(new BigDecimal(cloudSummary.expenses)));
+            balanceView.setText(formatMoney(new BigDecimal(cloudSummary.balance))); return;
+        }
         MonthlyTotals totals = monthlyTotals();
         incomeView.setText(formatMoney(totals.income()));
         expensesView.setText(formatMoney(totals.expenses()));
@@ -292,6 +325,7 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void displayFilteredTransactions() {
+        if(loadingTransactions || dataUnavailable) return;
         int selectedFilter = filterSpinner.getSelectedItemPosition();
 
         String query = searchInput.getText().toString()
@@ -423,6 +457,7 @@ public class DashboardActivity extends AppCompatActivity {
                                 "transaction_id",
                                 transaction.id
                         );
+                        intent.putExtra("remote_transaction_id",transaction.remoteId);
 
                         startActivity(intent);
                     } else {
@@ -456,12 +491,11 @@ public class DashboardActivity extends AppCompatActivity {
         transactionsView.setEnabled(false);
 
         Context appContext = getApplicationContext();
+        DataRepository source=repository;
 
         AppDatabase.databaseExecutor.execute(() -> {
             try {
-                int deleted = AppDatabase.getInstance(appContext)
-                        .transactionDao()
-                        .deleteById(transaction.id);
+                int deleted = source.delete(transaction);
 
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) {
@@ -494,7 +528,7 @@ public class DashboardActivity extends AppCompatActivity {
 
                     Toast.makeText(
                             appContext,
-                            "Could not delete. Please try again.",
+                            DataRepository.message(exception),
                             Toast.LENGTH_LONG
                     ).show();
                 });
@@ -506,6 +540,8 @@ public class DashboardActivity extends AppCompatActivity {
         String month = selectedMonth.toString();
         int request = ++budgetRequest;
         Context appContext = getApplicationContext();
+        DataRepository source=repository;
+        findViewById(R.id.btnSetBudget).setEnabled(false);
 
         currentBudget = null;
         budgetAmountView.setText("Loading budget...");
@@ -513,10 +549,7 @@ public class DashboardActivity extends AppCompatActivity {
 
         AppDatabase.databaseExecutor.execute(() -> {
             try {
-                BudgetEntity budget =
-                        AppDatabase.getInstance(appContext)
-                                .budgetDao()
-                                .getBudgetForMonth(month);
+                BudgetEntity budget = source.budget(month);
 
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()
@@ -526,6 +559,7 @@ public class DashboardActivity extends AppCompatActivity {
                     }
 
                     currentBudget = budget;
+                    findViewById(R.id.btnSetBudget).setEnabled(true);
                     displayBudget();
                 });
             } catch (Exception exception) {
@@ -545,6 +579,16 @@ public class DashboardActivity extends AppCompatActivity {
     }
 
     private void displayBudget() {
+        if(cloudSummary!=null) {
+            budgetAmountView.setText(cloudSummary.budget==null?getString(R.string.budget_not_set):formatMoney(new BigDecimal(cloudSummary.budget)));
+            if(cloudSummary.remaining==null) budgetStatusView.setText("");
+            else {
+                BigDecimal remaining=new BigDecimal(cloudSummary.remaining);
+                budgetStatusView.setText((remaining.signum()>=0?"Remaining: ":"Over budget: ")+formatMoney(remaining.abs()));
+                budgetStatusView.setTextColor(Color.parseColor(remaining.signum()>=0?"#166534":"#991B1B"));
+            }
+            return;
+        }
         if (currentBudget == null) {
             budgetAmountView.setText(R.string.budget_not_set);
             budgetStatusView.setText("");
@@ -581,6 +625,8 @@ public class DashboardActivity extends AppCompatActivity {
         }
 
         String monthToSave = selectedMonth.toString();
+        DataRepository source=repository;
+        long versionToSave=currentBudget==null?0:currentBudget.remoteVersion;
 
         EditText input = new EditText(this);
         input.setHint(R.string.budget_amount_hint);
@@ -638,6 +684,7 @@ public class DashboardActivity extends AppCompatActivity {
                         monthToSave,
                         amountMinor
                 );
+                budget.remoteVersion=versionToSave;
 
                 saveButton.setEnabled(false);
                 input.setEnabled(false);
@@ -649,9 +696,7 @@ public class DashboardActivity extends AppCompatActivity {
 
                 AppDatabase.databaseExecutor.execute(() -> {
                     try {
-                        AppDatabase.getInstance(appContext)
-                                .budgetDao()
-                                .saveBudget(budget);
+                        source.saveBudget(budget);
 
                         runOnUiThread(() -> {
                             if (isFinishing() || isDestroyed()) {
@@ -666,7 +711,7 @@ public class DashboardActivity extends AppCompatActivity {
                                     Toast.LENGTH_SHORT
                             ).show();
 
-                            loadBudget();
+                            loadTransactions();
                         });
                     } catch (Exception exception) {
                         Log.e("Spendi", "Could not save budget", exception);
@@ -684,7 +729,7 @@ public class DashboardActivity extends AppCompatActivity {
                             dialog.setCancelable(true);
 
                             input.setError(
-                                    "Could not save. Please try again."
+                                    DataRepository.message(exception)
                             );
                         });
                     }
@@ -709,8 +754,10 @@ public class DashboardActivity extends AppCompatActivity {
             }
         }
 
-        Map<String, Long> totals =
-                ExpenseAnalyzer.calculateByCategory(monthlyTransactions);
+        Map<String, BigDecimal> totals = new java.util.TreeMap<>();
+        for(Transaction transaction:monthlyTransactions) {
+            if("EXPENSE".equals(transaction.type)) totals.merge(transaction.category,BigDecimal.valueOf(transaction.amountMinor,2),BigDecimal::add);
+        }
 
         if (totals.isEmpty()) {
             return "\n\nNo expenses by category.";
@@ -719,15 +766,13 @@ public class DashboardActivity extends AppCompatActivity {
         StringBuilder summary =
                 new StringBuilder("\n\nExpenses by Category:");
 
-        for (Map.Entry<String, Long> entry : totals.entrySet()) {
+        for (Map.Entry<String, BigDecimal> entry : totals.entrySet()) {
 
             summary.append("\n")
                     .append(entry.getKey())
                     .append(": ")
                     .append(formatMoney(
-                            BigDecimal.valueOf(
-                                    entry.getValue(), 2
-                            )
+                            entry.getValue()
                     ));
         }
 

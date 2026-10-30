@@ -27,7 +27,7 @@ jobs:
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;37.0.0"'
       - uses: gradle/actions/setup-gradle@v4
       - name: Verify domain and Android application
-        run: bash ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
+        run: bash ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:processReleaseMainManifest --console=plain
       - name: Save test and lint reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,13 +74,15 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
       - name: Verify Java 21 backend against PostgreSQL
-        run: bash ./gradlew -PbackendOnly :core:test :backend:test :backend:integrationTest :backend:installDist --no-daemon --max-workers=2 --console=plain
+        run: bash ./gradlew -PbackendOnly :core:test :api-client:test :backend:test :backend:integrationTest :backend:installDist :backend:prepareLocalServer --no-daemon --max-workers=2 --console=plain
       - name: Save backend test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: backend-verification-reports
-          path: backend/build/reports/tests/
+          path: |
+            backend/build/reports/tests/
+            api-client/build/reports/tests/
           if-no-files-found: error
       - name: Save runnable backend distribution
         uses: actions/upload-artifact@v4

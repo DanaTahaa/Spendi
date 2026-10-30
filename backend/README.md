@@ -1,6 +1,6 @@
 # Spendi API — Java 21
 
-An authenticated expense and budget API backed by PostgreSQL. This module is inside the original Spendi project; Android still operates locally with Room. Connecting Android to this API is a subsequent synchronization milestone.
+An authenticated expense and budget API backed by PostgreSQL. This module is inside the original Spendi project; Android supports explicit local Room mode or online API mode. See the [CLI local launcher and Android connection guide](../docs/ANDROID_BACKEND_CONNECTION.md) for the persistent native PostgreSQL development setup without Docker.
 
 ## Implemented
 

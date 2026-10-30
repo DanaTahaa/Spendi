@@ -13,6 +13,9 @@ public class BudgetEntity {
 
     public long amountMinor;
 
+    @androidx.room.Ignore
+    public long remoteVersion;
+
     public BudgetEntity(@NonNull String month, long amountMinor) {
         this.month = month;
         this.amountMinor = amountMinor;

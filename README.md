@@ -1,6 +1,6 @@
 # Spendi — Java Expense Tracker
 
-Spendi is an Android application for tracking income, expenses, and monthly budgets. It stores data locally with Room and extracts financial rules into a standalone Java module, and includes a separate Java 21/PostgreSQL backend. Android-to-server synchronization is the next milestone.
+Spendi is an Android application for tracking income, expenses, and monthly budgets. It stores data locally with Room and extracts financial rules into a standalone Java module, and includes a separate Java 21/PostgreSQL backend. The dashboard can explicitly select local Room storage or online server storage. See the [Android/backend connection guide](docs/ANDROID_BACKEND_CONNECTION.md).
 
 ## Implemented
 
@@ -11,7 +11,8 @@ Spendi is an Android application for tracking income, expenses, and monthly budg
 - Store USD amounts as integer minor units; calculate totals with `BigDecimal`.
 - Share amount validation and monthly calculations through `core`, independent of Android.
 - Validate English, Arabic-Indic, and Persian digits, two-decimal precision, and integer overflow.
-- Run domain tests and an Android build/lint workflow through GitHub Actions.
+- Connect Android to the Java 21 API for online transaction and budget operations; keep existing Room records separate.
+- Run domain, HTTP client, PostgreSQL, and Android build/lint checks through GitHub Actions.
 
 ## Java versions
 
@@ -32,14 +33,14 @@ Windows PowerShell:
 
 ```powershell
 $env:JAVA_HOME='C:\Program Files\Java\jdk-21'
-.\gradlew.bat :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
+.\gradlew.bat :core:test :api-client:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
 ```
 
 Linux / macOS:
 
 ```sh
 export JAVA_HOME=/path/to/jdk-21
-bash ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
+bash ./gradlew :core:test :api-client:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
 ```
 
 Domain tests only:
@@ -60,6 +61,7 @@ The workflow in `.github/workflows/verify.yml` runs on pushes, pull requests, an
 
 ```text
 app (Android UI + Room) ---> core (amount parsing + monthly totals)
+app ---> api-client (Java 17 HTTP) ---> Java 21 API ---> PostgreSQL
 Java 21 API + PostgreSQL ---> core
 ```
 
@@ -67,7 +69,7 @@ Java 21 API + PostgreSQL ---> core
 
 `MonthlyTotals` uses the full calendar month, including the year, independently of UI search/filter state. Invalid legacy dates are excluded. Income and expenses accumulate as `BigDecimal`, so adding multiple valid `long` amounts does not overflow a `long` total. Negative budget remainder means overspending.
 
-This is an expense tracker, not a bank ledger or payment processor. The independent backend now implements authenticated APIs with PostgreSQL persistence; see [backend setup, API examples, and integration tests](backend/README.md). Android remains local-only. Multi-currency support, synchronization, Redis, API container deployment, and cloud deployment are future work. Room lifecycle and migration instrumentation coverage remains future work. See [the implementation plan](docs/REVOLUT_2027_AR.md) for the next milestones and acceptance checks.
+This is an expense tracker, not a bank ledger or payment processor. The independent backend now implements authenticated APIs with PostgreSQL persistence; see [backend setup, API examples, and integration tests](backend/README.md). Android supports explicit local or online cloud mode. OAuth login, offline cloud writes, automatic synchronization, multi-currency support, Redis, API container deployment, and cloud deployment are future work. Room lifecycle and migration instrumentation coverage remains future work. See [the implementation plan](docs/REVOLUT_2027_AR.md) for the next milestones and acceptance checks.
 
 ## Author
 

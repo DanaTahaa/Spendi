@@ -10,6 +10,11 @@ public class Transaction {
     @PrimaryKey(autoGenerate = true)
     public long id;
 
+    @androidx.room.Ignore
+    public String remoteId;
+    @androidx.room.Ignore
+    public long remoteVersion;
+
     public long amountMinor;
 
     @NonNull

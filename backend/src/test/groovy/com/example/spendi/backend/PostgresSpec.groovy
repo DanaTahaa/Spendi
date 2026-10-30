@@ -269,4 +269,28 @@ class PostgresSpec extends Specification {
         request('POST', '/v1/transactions', [note:'x' * 17000], 'alice', 'too-large').statusCode() == 413
         request('PATCH', '/v1/transactions').statusCode() == 405
     }
+    def 'shared Android HTTP client works against the real PostgreSQL API'() {
+        given:
+        def api = new com.example.spendi.client.ApiClient(base, token('alice'), true)
+        def input = new com.example.spendi.client.ApiClient.Entry(null, '25.50', 'EXPENSE', 'Food', '2027-07-15', 'Client integration', 0L)
+        when:
+        def saved = api.save(input, 'shared-client-create')
+        def replay = api.save(input, 'shared-client-create')
+        then:
+        saved.id == replay.id
+        api.list('2027-07').size() == 1
+        api.get(saved.id).amount == '25.50'
+        when:
+        def changed = api.save(new com.example.spendi.client.ApiClient.Entry(saved.id, '30.00', 'EXPENSE', 'Food', saved.date, saved.note, saved.version), null)
+        def budget = api.saveBudget('2027-07', '100.00', 0)
+        then:
+        changed.version == 2
+        budget.version == 1
+        api.budget('2027-07').amount == '100.00'
+        api.summary('2027-07').remaining == '70.00'
+        when:
+        api.delete(saved.id, changed.version)
+        then:
+        api.list('2027-07').empty
+    }
 }
